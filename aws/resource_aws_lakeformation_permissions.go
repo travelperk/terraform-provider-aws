@@ -385,8 +385,7 @@ func resourceAwsLakeFormationPermissionsDelete(d *schema.ResourceData, meta inte
 	input.Resource = expandLakeFormationResource(d, false)
 
 	err := resource.Retry(2*time.Minute, func() *resource.RetryError {
-		var err error
-		_, err = conn.RevokePermissions(input)
+		_, err := conn.RevokePermissions(input)
 		if err != nil {
 			if isAWSErr(err, lakeformation.ErrCodeInvalidInputException, "register the S3 path") {
 				return resource.RetryableError(err)
