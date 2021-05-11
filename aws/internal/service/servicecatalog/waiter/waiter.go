@@ -1,6 +1,7 @@
 package waiter
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/servicecatalog"
@@ -12,17 +13,20 @@ const (
 	ProductReadyTimeout  = 3 * time.Minute
 	ProductDeleteTimeout = 3 * time.Minute
 
+	ProvisioningArtifactReadyTimeout   = 3 * time.Minute
+	ProvisioningArtifactDeletedTimeout = 3 * time.Minute
+
 	StatusNotFound    = "NOT_FOUND"
 	StatusUnavailable = "UNAVAILABLE"
 
 	// AWS documentation is wrong, says that status will be "AVAILABLE" but it is actually "CREATED"
-	ProductStatusCreated = "CREATED"
+	StatusCreated = "CREATED"
 )
 
 func ProductReady(conn *servicecatalog.ServiceCatalog, acceptLanguage, productID string) (*servicecatalog.DescribeProductAsAdminOutput, error) {
 	stateConf := &resource.StateChangeConf{
 		Pending: []string{servicecatalog.StatusCreating, StatusNotFound, StatusUnavailable},
-		Target:  []string{servicecatalog.StatusAvailable, ProductStatusCreated},
+		Target:  []string{servicecatalog.StatusAvailable, StatusCreated},
 		Refresh: ProductStatus(conn, acceptLanguage, productID),
 		Timeout: ProductReadyTimeout,
 	}
@@ -38,7 +42,7 @@ func ProductReady(conn *servicecatalog.ServiceCatalog, acceptLanguage, productID
 
 func ProductDeleted(conn *servicecatalog.ServiceCatalog, acceptLanguage, productID string) (*servicecatalog.DescribeProductAsAdminOutput, error) {
 	stateConf := &resource.StateChangeConf{
-		Pending: []string{servicecatalog.StatusCreating, servicecatalog.StatusAvailable, ProductStatusCreated, StatusUnavailable},
+		Pending: []string{servicecatalog.StatusCreating, servicecatalog.StatusAvailable, StatusCreated, StatusUnavailable},
 		Target:  []string{StatusNotFound},
 		Refresh: ProductStatus(conn, acceptLanguage, productID),
 		Timeout: ProductReadyTimeout,
@@ -51,4 +55,42 @@ func ProductDeleted(conn *servicecatalog.ServiceCatalog, acceptLanguage, product
 	}
 
 	return nil, err
+}
+
+func ProvisioningArtifactReady(conn *servicecatalog.ServiceCatalog, id, productID string) (*servicecatalog.DescribeProvisioningArtifactOutput, error) {
+	stateConf := &resource.StateChangeConf{
+		Pending: []string{servicecatalog.StatusCreating, StatusNotFound, StatusUnavailable},
+		Target:  []string{servicecatalog.StatusAvailable, StatusCreated},
+		Refresh: ProvisioningArtifactStatus(conn, id, productID),
+		Timeout: ProvisioningArtifactReadyTimeout,
+	}
+
+	outputRaw, err := stateConf.WaitForState()
+
+	if output, ok := outputRaw.(*servicecatalog.DescribeProvisioningArtifactOutput); ok {
+		return output, err
+	}
+
+	return nil, err
+}
+
+func ProvisioningArtifactDeleted(conn *servicecatalog.ServiceCatalog, id, productID string) error {
+	stateConf := &resource.StateChangeConf{
+		Pending: []string{servicecatalog.StatusCreating, servicecatalog.StatusAvailable, StatusCreated, StatusUnavailable},
+		Target:  []string{StatusNotFound},
+		Refresh: ProvisioningArtifactStatus(conn, id, productID),
+		Timeout: ProvisioningArtifactDeletedTimeout,
+	}
+
+	_, err := stateConf.WaitForState()
+
+	if tfawserr.ErrCodeEquals(err, servicecatalog.ErrCodeResourceNotFoundException) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("error waiting for state of provisioning artifact (%s): %w", id, err)
+	}
+
+	return nil
 }
