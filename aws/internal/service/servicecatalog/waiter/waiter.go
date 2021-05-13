@@ -15,6 +15,9 @@ const (
 	TagOptionReadyTimeout  = 3 * time.Minute
 	TagOptionDeleteTimeout = 3 * time.Minute
 
+	ServiceActionReadyTimeout  = 3 * time.Minute
+	ServiceActionDeleteTimeout = 3 * time.Minute
+
 	StatusNotFound    = "NOT_FOUND"
 	StatusUnavailable = "UNAVAILABLE"
 
@@ -79,6 +82,40 @@ func TagOptionDeleted(conn *servicecatalog.ServiceCatalog, id string) error {
 		Target:  []string{StatusNotFound, StatusUnavailable},
 		Refresh: TagOptionStatus(conn, id),
 		Timeout: TagOptionDeleteTimeout,
+	}
+
+	_, err := stateConf.WaitForState()
+
+	if tfawserr.ErrCodeEquals(err, servicecatalog.ErrCodeResourceNotFoundException) {
+		return nil
+	}
+
+	return err
+}
+
+func ServiceActionReady(conn *servicecatalog.ServiceCatalog, acceptLanguage, id string) (*servicecatalog.ServiceActionDetail, error) {
+	stateConf := &resource.StateChangeConf{
+		Pending: []string{StatusNotFound, StatusUnavailable},
+		Target:  []string{servicecatalog.StatusAvailable},
+		Refresh: ServiceActionStatus(conn, acceptLanguage, id),
+		Timeout: ServiceActionReadyTimeout,
+	}
+
+	outputRaw, err := stateConf.WaitForState()
+
+	if output, ok := outputRaw.(*servicecatalog.ServiceActionDetail); ok {
+		return output, err
+	}
+
+	return nil, err
+}
+
+func ServiceActionDeleted(conn *servicecatalog.ServiceCatalog, acceptLanguage, id string) error {
+	stateConf := &resource.StateChangeConf{
+		Pending: []string{servicecatalog.StatusAvailable},
+		Target:  []string{StatusNotFound, StatusUnavailable},
+		Refresh: ServiceActionStatus(conn, acceptLanguage, id),
+		Timeout: ServiceActionDeleteTimeout,
 	}
 
 	_, err := stateConf.WaitForState()
