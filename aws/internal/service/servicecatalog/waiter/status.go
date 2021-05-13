@@ -68,3 +68,31 @@ func TagOptionStatus(conn *servicecatalog.ServiceCatalog, id string) resource.St
 		return output.TagOptionDetail, servicecatalog.StatusAvailable, err
 	}
 }
+
+func ServiceActionStatus(conn *servicecatalog.ServiceCatalog, acceptLanguage, id string) resource.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		input := &servicecatalog.DescribeServiceActionInput{
+			Id: aws.String(id),
+		}
+
+		if acceptLanguage != "" {
+			input.AcceptLanguage = aws.String(acceptLanguage)
+		}
+
+		output, err := conn.DescribeServiceAction(input)
+
+		if tfawserr.ErrCodeEquals(err, servicecatalog.ErrCodeResourceNotFoundException) {
+			return nil, StatusNotFound, err
+		}
+
+		if err != nil {
+			return nil, servicecatalog.StatusFailed, fmt.Errorf("error describing Service Action: %w", err)
+		}
+
+		if output == nil || output.ServiceActionDetail == nil {
+			return nil, StatusUnavailable, fmt.Errorf("error describing Service Action: empty Service Action Detail")
+		}
+
+		return output.ServiceActionDetail, servicecatalog.StatusAvailable, nil
+	}
+}
